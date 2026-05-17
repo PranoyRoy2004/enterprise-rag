@@ -203,18 +203,6 @@ npm run dev
 
 ---
 
-## 📈 Key Highlights for Recruiters
-
-✅ Built a complete production-ready AI application
-✅ Implemented Retrieval-Augmented Generation (RAG) pipeline
-✅ Worked with vector databases and embeddings
-✅ Developed scalable FastAPI backend APIs
-✅ Integrated AI/LLM workflows into real-world applications
-✅ Successfully deployed full-stack AI project to cloud platforms
-✅ Demonstrates practical AI engineering and backend architecture skills
-
----
-
 ## 🛠️ Future Improvements
 
 * User authentication & role-based access
