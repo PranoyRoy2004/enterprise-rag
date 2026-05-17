@@ -4,6 +4,7 @@ import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
 import UploadPanel from "@/components/UploadPanel";
 import { listDocuments, deleteDocument, deleteAllDocuments, Document } from "../lib/api";
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"chat" | "upload">("chat");
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -23,6 +24,15 @@ export default function Home() {
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
+
+  // Keep Render backend alive by pinging every 30 seconds
+  useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const keepAlive = setInterval(() => {
+      fetch(`${apiUrl}/health`).catch(() => {});
+    }, 30000);
+    return () => clearInterval(keepAlive);
+  }, []);
 
   const handleDelete = async (filename: string) => {
     try {
