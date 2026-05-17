@@ -111,7 +111,8 @@ This architecture improves factual accuracy and reduces hallucinations by ground
 
 ### Landing Page
 
----
+<img width="1916" height="912" alt="image" src="https://github.com/user-attachments/assets/5bb1ec05-b790-4553-81eb-a35653a9c432" />
+
 
 ## 🚀 Deployment Architecture
 
