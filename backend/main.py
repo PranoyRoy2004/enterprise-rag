@@ -9,22 +9,18 @@ load_dotenv()
 from api.upload import router as upload_router
 from api.chat import router as chat_router
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🚀 Enterprise RAG API starting up...")
     print(f"📁 ChromaDB path: {os.getenv('CHROMA_DB_PATH', './chroma_db')}")
     print(f"🤖 Embedding model: {os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2')}")
     print(f"⚡ Groq model: {os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')}")
-
-    print("📦 Preloading embedding model...")
-    from rag.embeddings import get_embedding_model
-    from rag.pipeline import get_chroma_collection
-    get_embedding_model()
-    get_chroma_collection()
-    print("✅ All models ready!")
-
+    
     yield
+    
     print("🛑 Enterprise RAG API shutting down...")
+
 
 app = FastAPI(
     title="Enterprise RAG Knowledge Base API",
@@ -44,6 +40,7 @@ app.add_middleware(
 app.include_router(upload_router, prefix="/api", tags=["Documents"])
 app.include_router(chat_router, prefix="/api", tags=["Chat"])
 
+
 @app.get("/")
 async def root():
     return {
@@ -52,6 +49,7 @@ async def root():
         "status": "running",
         "docs": "/docs"
     }
+
 
 @app.get("/health")
 async def health_check():
