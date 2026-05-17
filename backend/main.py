@@ -15,6 +15,14 @@ async def lifespan(app: FastAPI):
     print(f"📁 ChromaDB path: {os.getenv('CHROMA_DB_PATH', './chroma_db')}")
     print(f"🤖 Embedding model: {os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2')}")
     print(f"⚡ Groq model: {os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')}")
+
+    print("📦 Preloading embedding model...")
+    from rag.embeddings import get_embedding_model
+    from rag.pipeline import get_chroma_collection
+    get_embedding_model()
+    get_chroma_collection()
+    print("✅ All models ready!")
+
     yield
     print("🛑 Enterprise RAG API shutting down...")
 
@@ -25,7 +33,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS — allows Next.js frontend to talk to this API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,7 +41,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
 app.include_router(upload_router, prefix="/api", tags=["Documents"])
 app.include_router(chat_router, prefix="/api", tags=["Chat"])
 
