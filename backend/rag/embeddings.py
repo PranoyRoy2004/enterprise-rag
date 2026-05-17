@@ -12,7 +12,7 @@ def get_embedding_model() -> HuggingFaceEmbeddings:
     global _embedding_model
 
     if _embedding_model is None:
-        model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+        model_name = os.getenv("EMBEDDING_MODEL", "paraphrase-MiniLM-L3-v2")
         print(f"📦 Loading embedding model: {model_name}")
         _embedding_model = HuggingFaceEmbeddings(
             model_name=model_name,
