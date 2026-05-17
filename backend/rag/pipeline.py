@@ -5,11 +5,10 @@ from docx import Document as DocxDocument
 from typing import List, Dict, Any
 import chromadb
 from chromadb.config import Settings
+from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 
 load_dotenv()
-
-from rag.embeddings import get_embedding_model
 
 # ── ChromaDB client (singleton) ────────────────────────────────────
 
@@ -17,7 +16,7 @@ _chroma_client = None
 _collection = None
 
 def get_chroma_collection():
-    """Get or create ChromaDB collection."""
+    """Get or create ChromaDB collection with built-in embeddings."""
     global _chroma_client, _collection
 
     if _collection is None:
@@ -26,8 +25,14 @@ def get_chroma_collection():
             path=db_path,
             settings=Settings(anonymized_telemetry=False)
         )
+
+        # Use ChromaDB's built-in default embedding function
+        # This uses ONNX runtime — very lightweight, no HuggingFace needed!
+        ef = embedding_functions.DefaultEmbeddingFunction()
+
         _collection = _chroma_client.get_or_create_collection(
             name="enterprise_docs",
+            embedding_function=ef,
             metadata={"hnsw:space": "cosine"}
         )
         print(f"✅ ChromaDB collection ready: {_collection.count()} chunks stored")
@@ -37,19 +42,16 @@ def get_chroma_collection():
 # ── Text extraction ────────────────────────────────────────────────
 
 def extract_text_from_pdf(file_bytes: bytes) -> List[Dict[str, Any]]:
-    """
-    Extract text from PDF page by page.
-    Returns list of {page_number, text} dicts.
-    """
+    """Extract text from PDF page by page."""
     pages = []
     doc = fitz.open(stream=file_bytes, filetype="pdf")
 
     for page_num in range(len(doc)):
         page = doc[page_num]
         text = page.get_text("text").strip()
-        if text:  # skip empty pages
+        if text:
             pages.append({
-                "page_number": page_num + 1,  # 1-indexed for display
+                "page_number": page_num + 1,
                 "text": text
             })
 
@@ -57,10 +59,7 @@ def extract_text_from_pdf(file_bytes: bytes) -> List[Dict[str, Any]]:
     return pages
 
 def extract_text_from_docx(file_bytes: bytes) -> List[Dict[str, Any]]:
-    """
-    Extract text from DOCX file.
-    DOCX has no pages — we treat every 500 words as a virtual page.
-    """
+    """Extract text from DOCX file."""
     import io
     doc = DocxDocument(io.BytesIO(file_bytes))
     full_text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
@@ -80,10 +79,7 @@ def extract_text_from_docx(file_bytes: bytes) -> List[Dict[str, Any]]:
 # ── Text chunking ──────────────────────────────────────────────────
 
 def chunk_text(text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
-    """
-    Split text into overlapping chunks by word count.
-    Overlap ensures context isn't lost at chunk boundaries.
-    """
+    """Split text into overlapping chunks by word count."""
     chunk_size = chunk_size or int(os.getenv("CHUNK_SIZE", 500))
     overlap = overlap or int(os.getenv("CHUNK_OVERLAP", 50))
 
@@ -96,7 +92,7 @@ def chunk_text(text: str, chunk_size: int = None, overlap: int = None) -> List[s
         chunk = " ".join(words[start:end])
         if chunk.strip():
             chunks.append(chunk)
-        start += chunk_size - overlap  # slide window with overlap
+        start += chunk_size - overlap
 
     return chunks
 
@@ -110,8 +106,7 @@ async def ingest_document(
     Full ingestion pipeline:
     1. Extract text (PDF or DOCX)
     2. Chunk text
-    3. Embed chunks via HuggingFace
-    4. Store in ChromaDB with metadata
+    3. Store in ChromaDB (embeddings generated automatically)
     """
     print(f"\n📄 Ingesting: {filename}")
 
@@ -129,9 +124,9 @@ async def ingest_document(
     print(f"   📃 Extracted {len(pages)} pages")
 
     # Step 2 — Chunk all pages
-    all_chunks = []      # chunk text
-    all_metadatas = []   # metadata per chunk
-    all_ids = []         # unique ID per chunk
+    all_chunks = []
+    all_metadatas = []
+    all_ids = []
 
     chunk_index = 0
     for page in pages:
@@ -149,32 +144,25 @@ async def ingest_document(
 
     print(f"   🔪 Created {len(all_chunks)} chunks")
 
-    # Step 3 — Embed chunks
-    embedding_model = get_embedding_model()
-    print(f"   🧮 Embedding {len(all_chunks)} chunks...")
-    embeddings = embedding_model.embed_documents(all_chunks)
-    print(f"   ✅ Embeddings created: shape {len(embeddings)}x{len(embeddings[0])}")
-
-    # Step 4 — Store in ChromaDB
+    # Step 3 — Store in ChromaDB
+    # ChromaDB automatically generates embeddings using built-in ONNX model
     collection = get_chroma_collection()
 
-    # Store in batches of 100 to avoid memory issues
     batch_size = 100
     for i in range(0, len(all_chunks), batch_size):
         collection.add(
             ids=all_ids[i:i + batch_size],
-            embeddings=embeddings[i:i + batch_size],
             documents=all_chunks[i:i + batch_size],
             metadatas=all_metadatas[i:i + batch_size]
         )
 
-    print(f"   💾 Stored in ChromaDB. Total chunks in DB: {collection.count()}")
+    print(f"   💾 Stored in ChromaDB. Total chunks: {collection.count()}")
 
     return {
         "filename": filename,
         "pages_extracted": len(pages),
         "chunks_created": len(all_chunks),
-        "embedding_dim": len(embeddings[0]),
+        "embedding_dim": 384,
         "status": "success"
     }
 
@@ -187,11 +175,9 @@ def list_documents() -> List[Dict[str, Any]]:
     if collection.count() == 0:
         return []
 
-    # Get all metadata
     results = collection.get(include=["metadatas"])
     metadatas = results["metadatas"]
 
-    # Group by source filename
     docs = {}
     for meta in metadatas:
         source = meta["source"]
@@ -206,10 +192,9 @@ def list_documents() -> List[Dict[str, Any]]:
     return list(docs.values())
 
 def delete_document(filename: str) -> Dict[str, Any]:
-    """Delete all chunks for a specific document from ChromaDB."""
+    """Delete all chunks for a specific document."""
     collection = get_chroma_collection()
 
-    # Find all chunk IDs for this document
     results = collection.get(
         where={"source": filename},
         include=["metadatas"]
@@ -231,12 +216,9 @@ def delete_all_documents() -> Dict[str, Any]:
     collection = get_chroma_collection()
     total = collection.count()
 
-    # Delete the collection and recreate it
     _chroma_client.delete_collection("enterprise_docs")
-    _collection = _chroma_client.get_or_create_collection(
-        name="enterprise_docs",
-        metadata={"hnsw:space": "cosine"}
-    )
+    _collection = None
+    get_chroma_collection()
 
     print(f"🗑️  Cleared all documents: {total} chunks removed")
     return {"chunks_deleted": total}
